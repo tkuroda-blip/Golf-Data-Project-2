@@ -616,18 +616,68 @@ def get_team_names(selected_teams):
     if not selected_teams:
         return "—"
     return " & ".join(selected_teams) if len(selected_teams) > 1 else selected_teams[0]
+# =========================
+# KPI ROW
+# =========================
+
+TEAM_STATS = {
+    "cal lutheran": {"wins": 1, "top3": 6},
+    "pomona pitzer": {"wins": 1, "top3": 5},
+    "pomona-pitzer": {"wins": 1, "top3": 5},
+}
+
+def get_team_stats(selected_teams):
+    wins, top3 = 0, 0
+
+    if not selected_teams:
+        return "—", "—"
+
+    for t in selected_teams:
+        key = t.lower().strip()
+        for k, v in TEAM_STATS.items():
+            if k in key:
+                wins += v["wins"]
+                top3 += v["top3"]
+                break
+
+    return wins, top3
+
+
+def get_ranking(selected_teams):
+    if not selected_teams:
+        return "—"
+    rankings = []
+    for t in selected_teams:
+        key = t.lower().strip()
+        for k, v in TEAM_RANKINGS.items():
+            if k in key:
+                rankings.append(v)
+                break
+    return " / ".join(rankings) if rankings else "—"
+
+
+def get_team_names(selected_teams):
+    if not selected_teams:
+        return "—"
+    return " & ".join(selected_teams) if len(selected_teams) > 1 else selected_teams[0]
+
 
 col1, col2, col3, col4, col5 = st.columns(5)
+
 col1.metric("Tournaments", filtered_df["Event_clean"].nunique())
 col2.metric("Ranking", get_ranking(teams))
+
+wins, top3 = get_team_stats(teams)
+col3.metric("Wins", wins)
+col4.metric("Top 3 Finishes", top3)
 
 team_avg_points = (
     filtered_df.groupby("Team")["Points"].mean().round(1)
     if not filtered_df.empty else {}
 )
 avg_pts_display = " / ".join([str(v) for v in team_avg_points.values]) if len(team_avg_points) else "—"
-col3.metric("Avg Points", avg_pts_display)
-col4.metric("Team Name", get_team_names(teams))
+
+col5.metric("Avg Points", avg_pts_display)
 
 st.markdown("<div style='margin-top:32px'></div>", unsafe_allow_html=True)
 
