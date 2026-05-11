@@ -17,7 +17,8 @@ st.set_page_config(
 # =========================
 CLU_PURPLE  = "#7B2FBE"   # Cal Lutheran
 POMONA_BLUE = "#1D6FE8"   # Pomona-Pitzer
-WIN_GREEN   = "#00d980"   # Winner
+WIN_GOLD    = "#FFD700"   # Winner (gold) — used in trends chart
+WIN_GREEN   = "#00d980"   # Winner (green) — used in gap charts
 
 TEAM_COLORS = {
     "cal lutheran": CLU_PURPLE,
@@ -80,7 +81,6 @@ section[data-testid="stSidebar"] {
     border-right: 1px solid rgba(0,0,0,0.10) !important;
 }
 
-/* Force ALL text in sidebar to dark/black — comprehensive override */
 section[data-testid="stSidebar"],
 section[data-testid="stSidebar"] *,
 section[data-testid="stSidebar"] p,
@@ -140,7 +140,6 @@ section[data-testid="stSidebar"] div[data-baseweb="select"]:focus-within {
     box-shadow: 0 0 0 2px rgba(123,47,190,0.15) !important;
 }
 
-/* Dropdown input text and placeholder */
 section[data-testid="stSidebar"] [data-baseweb="select"] input,
 section[data-testid="stSidebar"] [data-baseweb="select"] [class*="placeholder"],
 section[data-testid="stSidebar"] [data-baseweb="select"] [class*="singleValue"],
@@ -149,14 +148,12 @@ section[data-testid="stSidebar"] [data-baseweb="select"] [class*="Input"] {
     background-color: transparent !important;
 }
 
-/* Dropdown arrow/chevron area */
 section[data-testid="stSidebar"] [data-baseweb="select"] [class*="indicatorContainer"],
 section[data-testid="stSidebar"] [data-baseweb="select"] svg {
     color: #4a5568 !important;
     fill: #4a5568 !important;
 }
 
-/* Multi-select tags */
 section[data-testid="stSidebar"] [data-baseweb="tag"] {
     background-color: rgba(123,47,190,0.12) !important;
     border: 1px solid rgba(123,47,190,0.40) !important;
@@ -171,7 +168,6 @@ section[data-testid="stSidebar"] [data-baseweb="tag"] * {
     font-size: 0.7rem !important;
 }
 
-/* Dropdown menu list (popover that appears below) */
 [data-baseweb="popover"] [data-baseweb="menu"],
 [data-baseweb="popover"] ul {
     background-color: #ffffff !important;
@@ -203,7 +199,6 @@ section[data-testid="stSidebar"] [data-testid="stSliderTrack"] {
     background-color: rgba(0,0,0,0.12) !important;
 }
 
-/* Slider value text */
 section[data-testid="stSidebar"] [data-testid="stThumbValue"],
 section[data-testid="stSidebar"] .stSlider p {
     color: #1a202c !important;
@@ -481,7 +476,7 @@ def load_data():
 df = load_data()
 
 # =========================
-# SIDEBAR
+# SIDEBAR — identical to original
 # =========================
 with st.sidebar:
     st.markdown("### ⚙ FILTERS")
@@ -561,6 +556,27 @@ combined_scores = pd.concat([
 ])
 combined_scores = combined_scores.groupby(["Event_clean", "Team"])["score"].mean().reset_index()
 
+# Winner score per event (unfiltered by team so it always has data)
+winner_trend = (
+    df[df["Event_clean"].isin(events)]
+    .groupby("Event_clean")["Winner Score"]
+    .mean()
+    .reset_index()
+)
+winner_trend.columns = ["Event_clean", "Winner Score"]
+
+# Combined pivot of BOTH teams for the H2H trend chart
+both_teams_pivot = (
+    df[
+        (df["Team"].isin(["Cal Lutheran", "Pomona Pitzer"])) &
+        (df["Event_clean"].isin(events)) &
+        (df["score"].between(score_range[0], score_range[1]))
+    ]
+    .pivot_table(index="Event_clean", columns="Team", values="score", aggfunc="mean")
+    .reset_index()
+    .merge(winner_trend, on="Event_clean", how="left")
+)
+
 # =========================
 # HEADER
 # =========================
@@ -612,7 +628,6 @@ team_avg_points = (
 avg_pts_display = " / ".join([str(v) for v in team_avg_points.values]) if len(team_avg_points) else "—"
 col3.metric("Avg Points", avg_pts_display)
 col4.metric("Team Name", get_team_names(teams))
-
 
 st.markdown("<div style='margin-top:32px'></div>", unsafe_allow_html=True)
 
@@ -713,33 +728,17 @@ with tab1:
 
     st.markdown("### 🏆 SCIAC Rival Scoreboard")
 
-    # =========================
-    # BUILD SCOREBOARD DATA
-    # =========================
     scoreboard_df = filtered_df[[
-        "Event_clean",
-        "Team",
-        "score",
-        "Winner Score",
-        "Score_vs_Winner",
-        "Points"
+        "Event_clean", "Team", "score", "Winner Score", "Score_vs_Winner", "Points"
     ]].copy()
 
-    # =========================
-    # CLEAN + FORMAT VALUES
-    # =========================
     scoreboard_df["score"] = pd.to_numeric(scoreboard_df["score"], errors="coerce").round(2)
     scoreboard_df["Winner Score"] = pd.to_numeric(scoreboard_df["Winner Score"], errors="coerce").round(2)
     scoreboard_df["Score_vs_Winner"] = pd.to_numeric(scoreboard_df["Score_vs_Winner"], errors="coerce")
-
-    # Golf-style formatting (+ / -)
     scoreboard_df["Score_vs_Winner"] = scoreboard_df["Score_vs_Winner"].apply(
         lambda x: f"{x:+.2f}" if pd.notnull(x) else ""
     )
 
-    # =========================
-    # MASTERS-STYLE HTML TABLE
-    # =========================
     html = """
     <style>
     table.masters {
@@ -748,8 +747,6 @@ with tab1:
         font-family: 'Space Mono', monospace;
         font-size: 13px;
     }
-
-    /* HEADER (Masters Yellow) */
     table.masters th {
         background-color: #FFD700;
         color: #000000;
@@ -758,177 +755,107 @@ with tab1:
         letter-spacing: 0.08em;
         border: 1px solid #000000;
     }
-
-    /* BODY (Masters Green) */
     table.masters td {
         background-color: #0B6E4F;
         color: #ffffff;
         padding: 10px;
         border: 1px solid #064B36;
     }
-
-    /* Hover highlight */
     table.masters tr:hover td {
         background-color: #0f8a62;
     }
     </style>
     """
 
-    html += "<table class='masters'>"
-
-    # =========================
-    # HEADER ROW
-    # =========================
-    html += "<tr>"
+    html += "<table class='masters'><tr>"
     for col in scoreboard_df.columns:
         html += f"<th>{col}</th>"
     html += "</tr>"
 
-    # =========================
-    # DATA ROWS
-    # =========================
     for _, row in scoreboard_df.iterrows():
         html += "<tr>"
         for col in scoreboard_df.columns:
             val = row[col]
-
-            # Clean NaN display
             if pd.isna(val):
                 val = ""
-
             html += f"<td>{val}</td>"
         html += "</tr>"
 
     html += "</table>"
-
     st.markdown(html, unsafe_allow_html=True)
 
-# ── TRENDS ──────────────────────────────────────
-# ── TRENDS ──────────────────────────────────────
-# ── TRENDS ──────────────────────────────────────
 
+# ── TRENDS ──────────────────────────────────────
 with tab2:
 
     st.markdown("### Score Trajectory by Tournament")
 
-    # =========================
-    # TOURNAMENT AVERAGE DATA (SAFE VERSION)
-    # =========================
-    avg_df_raw = df[["Event_clean", "Tournament Average"]].copy()
+    # Merge selected team's pivot with winner score
+    trend_pivot = pivot_score.merge(winner_trend, on="Event_clean", how="left")
 
-    event_order = pivot_score["Event_clean"].astype(str).str.lower().tolist()
-
-    avg_map = dict(zip(
-        avg_df_raw["Event_clean"],
-        avg_df_raw["Tournament Average"]
-    ))
-
-    avg_df = pd.DataFrame({
-        "Event_clean": event_order,
-        "Avg Score": [avg_map.get(e, None) for e in event_order]
-    })
-
-    avg_df["Avg Score"] = avg_df["Avg Score"].ffill()
-
-    avg_df_raw["Event_clean"] = avg_df_raw["Event_clean"].astype(str).str.strip().str.lower()
-    avg_df_raw["Tournament Average"] = pd.to_numeric(
-        avg_df_raw["Tournament Average"],
-        errors="coerce"
-    )
-
-    avg_df_raw = avg_df_raw.groupby("Event_clean", as_index=False)["Tournament Average"].mean()
-
-    # =========================
-    # ALIGN TO ACTUAL TOURNAMENT ORDER
-    # =========================
-    event_order = pivot_score["Event_clean"].tolist()
-
-    avg_map = dict(zip(avg_df["Event_clean"], avg_df["Avg Score"]))
-
-    avg_df = pd.DataFrame({
-        "Event_clean": event_order,
-        "Avg Score": [avg_map.get(e, None) for e in event_order]
-    })
-
-    # fallback fill so line NEVER breaks
-    avg_df["Avg Score"] = avg_df["Avg Score"].ffill()
-
-    # =========================
-    # TEAM LINES
-    # =========================
     fig_line = go.Figure()
 
-    team_cols = [c for c in pivot_score.columns if c != "Event_clean"]
+    # Team line — reflects sidebar radio selection
+    team_cols = [c for c in trend_pivot.columns if c not in ("Event_clean", "Winner Score")]
 
     for team in team_cols:
         color = get_team_color(team)
-
         fig_line.add_trace(go.Scatter(
-            x=pivot_score["Event_clean"],
-            y=pivot_score[team],
+            x=trend_pivot["Event_clean"],
+            y=trend_pivot[team],
             name=team,
             mode="lines+markers",
             line=dict(color=color, width=2.5),
             marker=dict(size=8, color=color),
+            connectgaps=True,
             hovertemplate=f"<b>{team}</b><br>%{{x}}<br>Score: %{{y:.1f}}<extra></extra>"
         ))
 
-    # =========================
-    # TOURNAMENT AVG LINE (FORCED VISIBILITY)
-    # =========================
+    # Gold winner score line
     fig_line.add_trace(go.Scatter(
-        x=avg_df["Event_clean"],
-        y=avg_df["Avg Score"],
-        name="Tournament Avg",
-        mode="lines",
-        line=dict(color="rgba(255,255,255,0.75)", width=3, dash="dot"),
+        x=trend_pivot["Event_clean"],
+        y=trend_pivot["Winner Score"],
+        name="🏆 Winner Score",
+        mode="lines+markers",
+        line=dict(color=WIN_GOLD, width=3, dash="dot"),
+        marker=dict(size=9, color=WIN_GOLD, symbol="star",
+                    line=dict(color="#000000", width=1)),
         connectgaps=True,
-        hovertemplate="<b>Tournament Avg</b><br>%{x}<br>%{y:.1f}<extra></extra>"
+        hovertemplate="<b>🏆 Winner Score</b><br>%{x}<br>%{y:.1f}<extra></extra>",
     ))
 
     apply_chart_theme(fig_line)
+    fig_line.update_layout(height=420)
     st.plotly_chart(fig_line, use_container_width=True)
+
+    st.markdown("""
+    <div style="font-family:'Space Mono',monospace;font-size:0.6rem;color:#4a5568;letter-spacing:0.1em;text-transform:uppercase;margin-top:4px;margin-bottom:24px;">
+    Solid line = selected team &nbsp;·&nbsp; ★ Gold dotted = tournament winner score &nbsp;·&nbsp; Switch teams via sidebar
+    </div>
+    """, unsafe_allow_html=True)
 
     st.markdown("### 🏆 SCIAC Rival Scoreboard")
 
-    # =========================
-    # BUILD SCOREBOARD DATA
-    # =========================
-    scoreboard_df = filtered_df[[
-        "Event_clean",
-        "Team",
-        "score",
-        "Winner Score",
-        "Score_vs_Winner",
-        "Points"
+    scoreboard_df2 = filtered_df[[
+        "Event_clean", "Team", "score", "Winner Score", "Score_vs_Winner", "Points"
     ]].copy()
 
-    # =========================
-    # CLEAN + FORMAT VALUES
-    # =========================
-    scoreboard_df["score"] = pd.to_numeric(scoreboard_df["score"], errors="coerce").round(2)
-    scoreboard_df["Winner Score"] = pd.to_numeric(scoreboard_df["Winner Score"], errors="coerce").round(2)
-    scoreboard_df["Score_vs_Winner"] = pd.to_numeric(scoreboard_df["Score_vs_Winner"], errors="coerce")
-
-    # Golf-style formatting (+ / -)
-    scoreboard_df["Score_vs_Winner"] = scoreboard_df["Score_vs_Winner"].apply(
+    scoreboard_df2["score"] = pd.to_numeric(scoreboard_df2["score"], errors="coerce").round(2)
+    scoreboard_df2["Winner Score"] = pd.to_numeric(scoreboard_df2["Winner Score"], errors="coerce").round(2)
+    scoreboard_df2["Score_vs_Winner"] = pd.to_numeric(scoreboard_df2["Score_vs_Winner"], errors="coerce")
+    scoreboard_df2["Score_vs_Winner"] = scoreboard_df2["Score_vs_Winner"].apply(
         lambda x: f"{x:+.2f}" if pd.notnull(x) else ""
     )
 
-    # =========================
-    # MASTERS-STYLE HTML TABLE
-    # =========================
-    html = """
+    html2 = """
     <style>
-    table.masters {
+    table.masters2 {
         border-collapse: collapse;
         width: 100%;
         font-family: 'Space Mono', monospace;
         font-size: 13px;
     }
-
-    /* HEADER (Masters Yellow) */
-    table.masters th {
+    table.masters2 th {
         background-color: #FFD700;
         color: #000000;
         padding: 10px;
@@ -936,50 +863,32 @@ with tab2:
         letter-spacing: 0.08em;
         border: 1px solid #000000;
     }
-
-    /* BODY (Masters Green) */
-    table.masters td {
+    table.masters2 td {
         background-color: #0B6E4F;
         color: #ffffff;
         padding: 10px;
         border: 1px solid #064B36;
     }
-
-    /* Hover highlight */
-    table.masters tr:hover td {
+    table.masters2 tr:hover td {
         background-color: #0f8a62;
     }
     </style>
     """
-
-    html += "<table class='masters'>"
-
-    # =========================
-    # HEADER ROW
-    # =========================
-    html += "<tr>"
-    for col in scoreboard_df.columns:
-        html += f"<th>{col}</th>"
-    html += "</tr>"
-
-    # =========================
-    # DATA ROWS
-    # =========================
-    for _, row in scoreboard_df.iterrows():
-        html += "<tr>"
-        for col in scoreboard_df.columns:
+    html2 += "<table class='masters2'><tr>"
+    for col in scoreboard_df2.columns:
+        html2 += f"<th>{col}</th>"
+    html2 += "</tr>"
+    for _, row in scoreboard_df2.iterrows():
+        html2 += "<tr>"
+        for col in scoreboard_df2.columns:
             val = row[col]
-
-            # Clean NaN display
             if pd.isna(val):
                 val = ""
+            html2 += f"<td>{val}</td>"
+        html2 += "</tr>"
+    html2 += "</table>"
+    st.markdown(html2, unsafe_allow_html=True)
 
-            html += f"<td>{val}</td>"
-        html += "</tr>"
-
-    html += "</table>"
-
-    st.markdown(html, unsafe_allow_html=True)
 
 # ── ANALYSIS ────────────────────────────────────
 with tab3:
@@ -1018,27 +927,25 @@ with tab3:
     apply_chart_theme(fig_gap)
     st.plotly_chart(fig_gap, use_container_width=True)
 
-    # ── IMPROVED SCORE DISTRIBUTION ──────────────────
+    # ── SCORE DISTRIBUTION ──────────────────
     st.markdown("### Score Distribution")
 
     teams_in_filter = filtered_df["Team"].unique().tolist()
 
     if not filtered_df.empty and len(teams_in_filter) > 0:
 
-        # Layout: summary stats cards + violin chart side by side
         dist_col1, dist_col2 = st.columns([1, 2])
 
         with dist_col1:
-            # Summary stats per team
             for team in teams_in_filter:
                 team_data = filtered_df[filtered_df["Team"] == team]["score"]
                 color = get_team_color(team)
-                mean_val = team_data.mean()
+                mean_val   = team_data.mean()
                 median_val = team_data.median()
-                std_val = team_data.std()
-                min_val = team_data.min()
-                max_val = team_data.max()
-                count_val = len(team_data)
+                std_val    = team_data.std()
+                min_val    = team_data.min()
+                max_val    = team_data.max()
+                count_val  = len(team_data)
 
                 st.markdown(f"""
                 <div style="
@@ -1073,14 +980,12 @@ with tab3:
                 """, unsafe_allow_html=True)
 
         with dist_col2:
-            # Violin plot with box + individual points
             fig_violin = go.Figure()
 
             for team in teams_in_filter:
                 team_data = filtered_df[filtered_df["Team"] == team]["score"]
                 color = get_team_color(team)
 
-                # Violin shape
                 fig_violin.add_trace(
                     go.Violin(
                         y=team_data,
@@ -1092,12 +997,8 @@ with tab3:
                         pointpos=0,
                         fillcolor=f'rgba({int(color[1:3], 16)}, {int(color[3:5], 16)}, {int(color[5:7], 16)}, 0.25)',
                         line_color=color,
-                        marker=dict(
-                            color=color,
-                            size=6,
-                            opacity=0.7,
-                            line=dict(color="#000000", width=1)
-                        ),
+                        marker=dict(color=color, size=6, opacity=0.7,
+                                    line=dict(color="#000000", width=1)),
                         meanline=dict(color="#ffffff", width=2),
                         opacity=0.85,
                         hovertemplate=f"<b>{team}</b><br>Score: %{{y}}<extra></extra>",
@@ -1144,7 +1045,6 @@ with tab3:
 
             st.plotly_chart(fig_violin, use_container_width=True)
 
-            # Score percentile context strip
             st.markdown("""
             <div style="font-family:'Space Mono',monospace;font-size:0.6rem;color:#4a5568;letter-spacing:0.1em;text-transform:uppercase;margin-top:4px;">
             ○ Each dot = one round &nbsp;·&nbsp; Box = IQR &nbsp;·&nbsp; White line = mean &nbsp;·&nbsp; Width = score frequency
@@ -1154,61 +1054,60 @@ with tab3:
     else:
         st.info("No data available for the current filter selection.")
 
-    st.markdown("### Head-to-Head")
+    # ── HEAD-TO-HEAD: 3-line trend chart ────────────────────────────────
+    st.markdown("### Head-to-Head Score Trajectory")
 
-    if len(compare_teams) != 2:
-        st.info("↑ Select 2 teams in the sidebar to enable head-to-head comparison.")
+    fig_h2h_trend = go.Figure()
 
-    else:
+    # Cal Lutheran line
+    if "Cal Lutheran" in both_teams_pivot.columns:
+        fig_h2h_trend.add_trace(go.Scatter(
+            x=both_teams_pivot["Event_clean"],
+            y=both_teams_pivot["Cal Lutheran"],
+            name="Cal Lutheran",
+            mode="lines+markers",
+            line=dict(color=CLU_PURPLE, width=2.5),
+            marker=dict(size=8, color=CLU_PURPLE),
+            connectgaps=True,
+            hovertemplate="<b>Cal Lutheran</b><br>%{x}<br>Score: %{y:.1f}<extra></extra>"
+        ))
 
-        # Separate dataframe for comparison
-        h2h_df = df[
-            (df["Team"].isin(compare_teams)) &
-            (df["Event_clean"].isin(events)) &
-            (df["score"].between(score_range[0], score_range[1]))
-            ]
+    # Pomona Pitzer line
+    if "Pomona Pitzer" in both_teams_pivot.columns:
+        fig_h2h_trend.add_trace(go.Scatter(
+            x=both_teams_pivot["Event_clean"],
+            y=both_teams_pivot["Pomona Pitzer"],
+            name="Pomona Pitzer",
+            mode="lines+markers",
+            line=dict(color=POMONA_BLUE, width=2.5),
+            marker=dict(size=8, color=POMONA_BLUE),
+            connectgaps=True,
+            hovertemplate="<b>Pomona Pitzer</b><br>%{x}<br>Score: %{y:.1f}<extra></extra>"
+        ))
 
-        pivot_h2h = h2h_df.pivot_table(
-            index="Event_clean",
-            columns="Team",
-            values="Score_vs_Winner",
-            aggfunc="mean"
-        ).reset_index()
+    # Gold winner score line
+    if "Winner Score" in both_teams_pivot.columns:
+        fig_h2h_trend.add_trace(go.Scatter(
+            x=both_teams_pivot["Event_clean"],
+            y=both_teams_pivot["Winner Score"],
+            name="🏆 Winner Score",
+            mode="lines+markers",
+            line=dict(color=WIN_GOLD, width=3, dash="dot"),
+            marker=dict(size=9, color=WIN_GOLD, symbol="star",
+                        line=dict(color="#000000", width=1)),
+            connectgaps=True,
+            hovertemplate="<b>🏆 Winner Score</b><br>%{x}<br>%{y:.1f}<extra></extra>",
+        ))
 
-        team_a, team_b = compare_teams
+    apply_chart_theme(fig_h2h_trend)
+    fig_h2h_trend.update_layout(height=420)
+    st.plotly_chart(fig_h2h_trend, use_container_width=True)
 
-        if team_a not in pivot_h2h.columns or team_b not in pivot_h2h.columns:
-            st.warning("No overlapping tournament data found for selected teams.")
-
-        else:
-
-            fig_h2h = go.Figure()
-
-            for team in [team_a, team_b]:
-                fig_h2h.add_trace(
-                    go.Bar(
-                        x=pivot_h2h["Event_clean"],
-                        y=pivot_h2h[team],
-                        name=team,
-                        marker_color=get_team_color(team),
-                        marker_line_width=0,
-                        hovertemplate=f"<b>{team}</b><br>%{{x}}<br>%{{y:.1f}} strokes<extra></extra>"
-                    )
-                )
-
-            fig_h2h.add_hline(
-                y=0,
-                line_color=WIN_GREEN,
-                line_width=2,
-                line_dash="dot",
-                annotation_text="WINNER"
-            )
-
-            fig_h2h.update_layout(barmode="group")
-
-            apply_chart_theme(fig_h2h)
-
-            st.plotly_chart(fig_h2h, use_container_width=True)
+    st.markdown("""
+    <div style="font-family:'Space Mono',monospace;font-size:0.6rem;color:#4a5568;letter-spacing:0.1em;text-transform:uppercase;margin-top:4px;">
+    ● Purple = Cal Lutheran &nbsp;·&nbsp; ● Blue = Pomona Pitzer &nbsp;·&nbsp; ★ Gold dotted = Tournament Winner Score
+    </div>
+    """, unsafe_allow_html=True)
 
 # =========================
 # FOOTER
@@ -1220,4 +1119,3 @@ st.markdown("""
   </span>
 </div>
 """, unsafe_allow_html=True)
-
